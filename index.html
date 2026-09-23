@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f6efe8">
+<title>Plan nutricional</title>
+<link rel="manifest" href="manifest.json">
+<style>
+:root{
+  --bg:#f6efe8; --card:#fffdf9; --text:#252525; --muted:#767676;
+  --accent:#8f6f61; --accent2:#d9c6bb; --ok:#5d8f6a; --warn:#c58a43;
+  --line:#e6ddd7; --shadow:0 6px 18px rgba(0,0,0,.06);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+main{max-width:760px;margin:auto;padding:16px 14px 96px}
+header{position:sticky;top:0;background:linear-gradient(var(--bg) 82%,transparent);padding:10px 0 14px;z-index:5}
+h1{font-size:1.5rem;margin:0 0 4px}
+.sub{color:var(--muted);font-size:.92rem}
+.summary{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.metric{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:var(--shadow)}
+.metric b{display:block;font-size:1.1rem}
+.metric small{color:var(--muted)}
+.progress{height:7px;background:#eee5df;border-radius:99px;margin-top:8px;overflow:hidden}
+.progress > i{display:block;height:100%;background:var(--accent);width:0}
+.goalrow{display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap}
+select,button,input[type=number]{font:inherit}
+select,input[type=number]{background:white;border:1px solid var(--line);border-radius:10px;padding:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;margin:12px 0;box-shadow:var(--shadow)}
+.card h2{font-size:1.05rem;margin:0 0 10px}
+.tabs{display:flex;gap:8px;margin-bottom:10px}
+.tab{flex:1;border:1px solid var(--line);background:#fff;border-radius:12px;padding:9px;font-weight:700}
+.tab.active{background:var(--accent);color:white;border-color:var(--accent)}
+.item{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start;padding:9px 0;border-bottom:1px dashed var(--line)}
+.item:last-child{border-bottom:0}
+.item label{line-height:1.25}
+.macro{font-size:.78rem;color:var(--muted);white-space:nowrap;text-align:right}
+.done label{text-decoration:line-through;color:var(--muted)}
+.mealstatus{font-size:.85rem;color:var(--muted);margin-top:8px}
+.mealstatus.ok{color:var(--ok);font-weight:700}
+.water{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.water button,.reset{border:0;border-radius:12px;padding:10px 12px;background:var(--accent);color:white;font-weight:700}
+.reset{width:100%;margin-top:8px}
+.secondary{background:#eee2db!important;color:var(--text)!important}
+.note{font-size:.8rem;color:var(--muted);line-height:1.35}
+details{margin-top:10px}
+summary{cursor:pointer;font-weight:700}
+.editgrid{display:grid;grid-template-columns:1.4fr repeat(4,1fr);gap:6px;align-items:center;font-size:.82rem}
+.editgrid input{width:100%;padding:6px}
+footer{color:var(--muted);font-size:.78rem;margin-top:18px}
+@media(min-width:650px){.summary{grid-template-columns:repeat(4,1fr)}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>🍽️ Plan nutricional</h1>
+  <div class="sub">Elige A o B en cada comida y marca solo lo que realmente has tomado.</div>
+
+  <div class="goalrow">
+    <label>Objetivo:
+      <select id="goalSelect">
+        <option value="A">Día A · 2000 kcal · 130P · 255HC · 50G</option>
+        <option value="B">Día B · 2000 kcal · 125P · 250HC · 55G</option>
+        <option value="custom">Personalizado</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="summary">
+    <div class="metric"><small>Calorías</small><b id="kcalText">0 / 2000</b><div class="progress"><i id="kcalBar"></i></div><small id="kcalLeft"></small></div>
+    <div class="metric"><small>Proteína</small><b id="pText">0 / 130 g</b><div class="progress"><i id="pBar"></i></div><small id="pLeft"></small></div>
+    <div class="metric"><small>Hidratos</small><b id="cText">0 / 255 g</b><div class="progress"><i id="cBar"></i></div><small id="cLeft"></small></div>
+    <div class="metric"><small>Grasas</small><b id="fText">0 / 50 g</b><div class="progress"><i id="fBar"></i></div><small id="fLeft"></small></div>
+  </div>
+</header>
+
+<section id="meals"></section>
+
+<section class="card">
+  <h2>💧 Agua y creatina</h2>
+  <div class="water">
+    <button id="waterMinus" class="secondary">− 250 ml</button>
+    <b id="waterText">0,0 L</b>
+    <button id="waterPlus">+ 250 ml</button>
+  </div>
+  <div class="progress"><i id="waterBar"></i></div>
+  <div class="item" style="margin-top:8px">
+    <input type="checkbox" id="creatine">
+    <label for="creatine">Creatina — 6 g</label>
+    <span class="macro">0 kcal</span>
+  </div>
+  <p class="note">Objetivo de agua del plan: 2–3 L al día. La creatina aparece como 6 g diarios.</p>
+</section>
+
+<section class="card">
+  <h2>⚙️ Ajustar macros de alimentos</h2>
+  <p class="note">El PDF no incluye macros por alimento. La app parte de valores nutricionales aproximados. Puedes corregirlos aquí si usas una marca concreta; los cambios quedan guardados en este dispositivo.</p>
+  <details>
+    <summary>Editar valores</summary>
+    <div id="editor" style="margin-top:10px"></div>
+  </details>
+</section>
+
+<button class="reset" id="resetDay">↻ Nuevo día / desmarcar todo</button>
+
+<footer>
+Los alimentos y cantidades proceden del plan facilitado. Los macros individuales son estimaciones orientativas y pueden variar por marca, preparación y producto.
+</footer>
+</main>
+
+<script>
+const goals = {
+  A:{kcal:2000,p:130,c:255,f:50},
+  B:{kcal:2000,p:125,c:250,f:55}
+};
+
+// Valores aproximados por la cantidad exacta indicada en el plan.
+// kcal, proteína, hidratos, grasas
+const defaults = {
+ "cereales75": {name:"Cereales integrales o sin azúcar — 75 g", kcal:280,p:8,c:55,f:3},
+ "cafe": {name:"Café con leche vegetal sin azúcar", kcal:35,p:3,c:2,f:2},
+ "frutos20": {name:"Frutos secos — 20 g", kcal:120,p:4,c:3,f:11},
+ "choco25": {name:"Chocolate negro 85% — 25 g", kcal:150,p:3,c:5,f:13},
+ "frutaPeq": {name:"1 fruta pequeña (p. ej., kiwi)", kcal:50,p:1,c:12,f:0},
+ "pan75": {name:"Pan — 75 g", kcal:190,p:7,c:37,f:2},
+ "tortas6": {name:"6 tortas de arroz", kcal:210,p:4,c:44,f:2},
+ "tofu50": {name:"Tofu firme — 50 g", kcal:65,p:7,c:1,f:4},
+ "aguacate40": {name:"Aguacate — 40 g", kcal:64,p:1,c:3,f:6},
+ "prote15": {name:"Proteína vegetal — 15 g", kcal:60,p:12,c:2,f:1},
+ "platano": {name:"1 plátano mediano", kcal:105,p:1,c:27,f:0},
+ "yogur150": {name:"Yogur Skyr Style High Protein Alpro — 150 g", kcal:90,p:10,c:7,f:2},
+ "frutos15": {name:"Frutos secos — 15 g", kcal:90,p:3,c:2,f:8},
+ "choco20": {name:"Chocolate negro 85% — 20 g", kcal:120,p:2,c:4,f:10},
+ "frutaMed": {name:"1 fruta mediana (p. ej., manzana)", kcal:80,p:0,c:21,f:0},
+ "cereal75": {name:"Arroz, pasta o quinoa — 75 g", kcal:270,p:8,c:55,f:2},
+ "verdura": {name:"Verdura / ensalada — libre", kcal:80,p:4,c:14,f:1},
+ "seitan150": {name:"Seitán o Heura — 150 g", kcal:220,p:35,c:12,f:5},
+ "soja50": {name:"Soja texturizada — 50 g", kcal:170,p:25,c:15,f:2},
+ "levadura10": {name:"Levadura nutricional — 10 g", kcal:35,p:5,c:3,f:1},
+ "aove5": {name:"AOVE — 5 ml", kcal:45,p:0,c:0,f:5},
+ "tofu150": {name:"Tofu firme, rulo o similar — 150 g", kcal:195,p:21,c:3,f:12},
+ "patata150": {name:"Patata — 150 g", kcal:115,p:3,c:26,f:0},
+ "boniato100": {name:"Boniato — 100 g", kcal:90,p:2,c:21,f:0},
+ "pan45": {name:"Pan — 45 g", kcal:115,p:4,c:22,f:1},
+ "legumbres200": {name:"Legumbres cocidas — 200 g", kcal:240,p:16,c:40,f:3}
+};
+
+let macros = JSON.parse(localStorage.getItem("macrosV1")||"null") || defaults;
+let state = JSON.parse(localStorage.getItem("stateV1")||"null") || {
+  selections:{desayuno:"A",media:"A",comida:"A",merienda:"A",cena:"A"},
+  checked:{}, water:0, creatine:false, goal:"A"
+};
+
+const meals = [
+  {
+    id:"desayuno", title:"DESAYUNO",
+    A:[
+      {id:"cereales75"},
+      {id:"cafe"},
+      {choice:["frutos20","choco25"], label:"Frutos secos 20 g O chocolate negro 85% 25 g"},
+      {id:"frutaPeq"}
+    ],
+    B:[
+      {choice:["pan75","tortas6"], label:"Pan 75 g O 6 tortas de arroz"},
+      {id:"tofu50"},
+      {id:"aguacate40"},
+      {id:"cafe"},
+      {id:"frutaPeq"}
+    ]
+  },
+  {
+    id:"media", title:"MEDIA MAÑANA",
+    A:[
+      {id:"prote15"},
+      {id:"platano"}
+    ],
+    B:[
+      {id:"yogur150"},
+      {choice:["frutos15","choco20"], label:"Frutos secos 15 g O chocolate negro 85% 20 g"},
+      {id:"frutaMed"}
+    ]
+  },
+  {
+    id:"comida", title:"COMIDA",
+    A:[
+      {id:"cereal75"},
+      {id:"verdura"},
+      {choice:["seitan150","soja50"], label:"Seitán/Heura 150 g O soja texturizada 50 g"},
+      {id:"levadura10"},
+      {id:"aove5"},
+      {id:"frutaPeq"}
+    ],
+    B:[
+      {id:"cereal75"},
+      {id:"verdura"},
+      {id:"tofu150"},
+      {id:"levadura10"},
+      {id:"aove5"},
+      {id:"frutaPeq"}
+    ]
+  },
+  {
+    id:"merienda", title:"MERIENDA",
+    A:[
+      {id:"yogur150"},
+      {id:"frutaMed"}
+    ],
+    B:[
+      {id:"prote15"},
+      {id:"frutaMed"}
+    ]
+  },
+  {
+    id:"cena", title:"CENA",
+    A:[
+      {id:"verdura"},
+      {choice:["patata150","boniato100","pan45"], label:"Patata 150 g O boniato 100 g O pan 45 g"},
+      {id:"legumbres200"},
+      {id:"tofu150"},
+      {id:"aove5"}
+    ],
+    B:[
+      {id:"verdura"},
+      {choice:["patata150","boniato100","pan45"], label:"Patata 150 g O boniato 100 g O pan 45 g"},
+      {id:"legumbres200"},
+      {choice:["seitan150","soja50"], label:"Seitán/Heura 150 g O soja texturizada 50 g"},
+      {id:"aove5"}
+    ]
+  }
+];
+
+function key(meal,opt,idx){return `${meal}_${opt}_${idx}`}
+
+function renderMeals(){
+  const root=document.getElementById("meals"); root.innerHTML="";
+  meals.forEach(meal=>{
+    const opt=state.selections[meal.id]||"A";
+    const card=document.createElement("section"); card.className="card";
+    card.innerHTML=`<h2>${meal.title}</h2>
+      <div class="tabs">
+        <button class="tab ${opt==="A"?"active":""}" data-meal="${meal.id}" data-opt="A">Opción A</button>
+        <button class="tab ${opt==="B"?"active":""}" data-meal="${meal.id}" data-opt="B">Opción B</button>
+      </div>
+      <div class="items"></div><div class="mealstatus"></div>`;
+    const list=card.querySelector(".items");
+    meal[opt].forEach((entry,idx)=>{
+      const k=key(meal.id,opt,idx);
+      const row=document.createElement("div"); row.className="item"+(state.checked[k]?" done":"");
+      const cb=document.createElement("input"); cb.type="checkbox"; cb.checked=!!state.checked[k];
+      cb.onchange=()=>{state.checked[k]=cb.checked; save(); renderMeals(); updateSummary();}
+      const label=document.createElement("label");
+      const macro=document.createElement("span"); macro.className="macro";
+
+      if(entry.id){
+        label.textContent=macros[entry.id].name;
+        macro.textContent=`${macros[entry.id].kcal} kcal`;
+        row.dataset.macroId=entry.id;
+      } else {
+        const sel=document.createElement("select");
+        entry.choice.forEach(id=>{
+          const o=document.createElement("option"); o.value=id; o.textContent=macros[id].name; sel.appendChild(o);
+        });
+        const saved=state.checked[k+"_choice"] || entry.choice[0];
+        sel.value=saved;
+        sel.onchange=()=>{state.checked[k+"_choice"]=sel.value; save(); renderMeals(); updateSummary();}
+        label.innerHTML="";
+        label.appendChild(sel);
+        macro.textContent=`${macros[saved].kcal} kcal`;
+        row.dataset.macroId=saved;
+      }
+      row.append(cb,label,macro); list.appendChild(row);
+    });
+
+    const status=card.querySelector(".mealstatus");
+    const ks=meal[opt].map((_,i)=>key(meal.id,opt,i));
+    const done=ks.filter(k=>state.checked[k]).length;
+    status.textContent=done===ks.length ? "✓ Comida completa" : `${done}/${ks.length} elementos marcados`;
+    if(done===ks.length) status.classList.add("ok");
+    root.appendChild(card);
+  });
+
+  document.querySelectorAll(".tab").forEach(btn=>{
+    btn.onclick=()=>{
+      const m=btn.dataset.meal, o=btn.dataset.opt;
+      state.selections[m]=o; save(); renderMeals(); updateSummary();
+    }
+  });
+}
+
+function consumed(){
+  let t={kcal:0,p:0,c:0,f:0};
+  meals.forEach(meal=>{
+    const opt=state.selections[meal.id]||"A";
+    meal[opt].forEach((entry,idx)=>{
+      const k=key(meal.id,opt,idx);
+      if(!state.checked[k]) return;
+      let id=entry.id || state.checked[k+"_choice"] || entry.choice[0];
+      const m=macros[id];
+      ["kcal","p","c","f"].forEach(x=>t[x]+=Number(m[x]||0));
+    });
+  });
+  return t;
+}
+function updateSummary(){
+  let g=goals[state.goal] || goals.A;
+  const t=consumed();
+  const defs=[["kcal","kcalText","kcalBar","kcalLeft"," kcal"],["p","pText","pBar","pLeft"," g"],["c","cText","cBar","cLeft"," g"],["f","fText","fBar","fLeft"," g"]];
+  defs.forEach(([x,txt,bar,left,unit])=>{
+    document.getElementById(txt).textContent=`${Math.round(t[x])} / ${g[x]}${unit}`;
+    const pending=Math.max(0,g[x]-t[x]);
+    document.getElementById(left).textContent=pending>0?`Pendiente: ${Math.round(pending)}${unit}`:`Objetivo alcanzado`;
+    document.getElementById(bar).style.width=Math.min(100,t[x]/g[x]*100)+"%";
+  });
+  document.getElementById("waterText").textContent=(state.water/1000).toFixed(2).replace(".",",")+" L";
+  document.getElementById("waterBar").style.width=Math.min(100,state.water/2000*100)+"%";
+  document.getElementById("creatine").checked=!!state.creatine;
+}
+function save(){localStorage.setItem("stateV1",JSON.stringify(state)); localStorage.setItem("macrosV1",JSON.stringify(macros));}
+
+function renderEditor(){
+  const el=document.getElementById("editor"); el.innerHTML="";
+  const head=document.createElement("div"); head.className="editgrid";
+  head.innerHTML="<b>Alimento</b><b>kcal</b><b>P</b><b>HC</b><b>G</b>"; el.appendChild(head);
+  Object.entries(macros).forEach(([id,m])=>{
+    const row=document.createElement("div"); row.className="editgrid";
+    const n=document.createElement("div"); n.textContent=m.name;
+    row.appendChild(n);
+    ["kcal","p","c","f"].forEach(k=>{
+      const inp=document.createElement("input"); inp.type="number"; inp.step="0.1"; inp.value=m[k];
+      inp.onchange=()=>{macros[id][k]=Number(inp.value||0); save(); renderMeals(); updateSummary();}
+      row.appendChild(inp);
+    });
+    el.appendChild(row);
+  });
+}
+
+document.getElementById("goalSelect").value=state.goal||"A";
+document.getElementById("goalSelect").onchange=e=>{
+  state.goal=e.target.value==="custom"?"A":e.target.value; save(); updateSummary();
+};
+document.getElementById("waterPlus").onclick=()=>{state.water=Math.min(5000,state.water+250);save();updateSummary();}
+document.getElementById("waterMinus").onclick=()=>{state.water=Math.max(0,state.water-250);save();updateSummary();}
+document.getElementById("creatine").onchange=e=>{state.creatine=e.target.checked;save();}
+document.getElementById("resetDay").onclick=()=>{
+  if(confirm("¿Desmarcar todo y empezar un nuevo día?")){
+    state.checked={};state.water=0;state.creatine=false;save();renderMeals();updateSummary();
+  }
+};
+
+renderMeals(); renderEditor(); updateSummary();
+
+if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{});}
+</script>
+</body>
+</html>
