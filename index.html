@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f6efe8">
 <title>Plan nutricional</title>
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="manifest.webmanifest">
 <style>
 :root{
   --bg:#f6efe8; --card:#fffdf9; --text:#252525; --muted:#767676;
   --accent:#8f6f61; --accent2:#d9c6bb; --ok:#5d8f6a; --warn:#c58a43;
-  --line:#e6ddd7; --shadow:0 6px 18px rgba(0,0,0,.06);
+  --danger:#9b5b5b; --line:#e6ddd7; --shadow:0 6px 18px rgba(0,0,0,.06);
 }
 *{box-sizing:border-box}
 body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
@@ -49,6 +49,22 @@ summary{cursor:pointer;font-weight:700}
 .editgrid{display:grid;grid-template-columns:1.4fr repeat(4,1fr);gap:6px;align-items:center;font-size:.82rem}
 .editgrid input{width:100%;padding:6px}
 footer{color:var(--muted);font-size:.78rem;margin-top:18px}
+
+/* Historial diario */
+.historylist{display:flex;flex-direction:column;gap:9px;max-height:520px;overflow:auto;padding-right:2px}
+.historyrow{border:1px solid var(--line);border-radius:14px;padding:10px;background:#fff}
+.historytop{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:7px}
+.historytop b{font-size:.95rem}
+.todaytag{font-size:.72rem;background:#eee2db;border-radius:99px;padding:3px 8px;color:var(--accent);font-weight:700}
+.historygrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.historymetric{font-size:.79rem;padding:7px;border-radius:10px;background:#f8f3ef}
+.historymetric strong{display:block;font-size:.84rem;margin-bottom:2px}
+.historymetric.pending{color:#8d5d24}
+.historymetric.excess{color:var(--danger)}
+.historymetric.exact{color:var(--ok)}
+.historyconsumed{font-size:.75rem;color:var(--muted);margin-top:7px;line-height:1.4}
+
+@media(min-width:520px){.historygrid{grid-template-columns:repeat(4,1fr)}}
 @media(min-width:650px){.summary{grid-template-columns:repeat(4,1fr)}}
 </style>
 </head>
@@ -63,7 +79,6 @@ footer{color:var(--muted);font-size:.78rem;margin-top:18px}
       <select id="goalSelect">
         <option value="A">Día A · 2000 kcal · 130P · 255HC · 50G</option>
         <option value="B">Día B · 2000 kcal · 125P · 250HC · 55G</option>
-        <option value="custom">Personalizado</option>
       </select>
     </label>
   </div>
@@ -95,15 +110,21 @@ footer{color:var(--muted);font-size:.78rem;margin-top:18px}
 </section>
 
 <section class="card">
+  <h2>📅 Historial diario</h2>
+  <p class="note">Se guarda automáticamente la diferencia de cada día frente a tu objetivo. Si te falta, verás “Faltan”; si te pasas, verás “Exceso”.</p>
+  <div id="history" class="historylist"></div>
+</section>
+
+<section class="card">
   <h2>⚙️ Ajustar macros de alimentos</h2>
-  <p class="note">El PDF no incluye macros por alimento. La app parte de valores nutricionales aproximados. Puedes corregirlos aquí si usas una marca concreta; los cambios quedan guardados en este dispositivo.</p>
+  <p class="note">La app parte de valores nutricionales aproximados. Puedes corregirlos aquí si usas una marca concreta; los cambios quedan guardados en este dispositivo.</p>
   <details>
     <summary>Editar valores</summary>
     <div id="editor" style="margin-top:10px"></div>
   </details>
 </section>
 
-<button class="reset" id="resetDay">↻ Nuevo día / desmarcar todo</button>
+<button class="reset" id="resetDay">↻ Reiniciar el día de hoy</button>
 
 <footer>
 Los alimentos y cantidades proceden del plan facilitado. Los macros individuales son estimaciones orientativas y pueden variar por marca, preparación y producto.
@@ -147,11 +168,20 @@ const defaults = {
  "legumbres200": {name:"Legumbres cocidas — 200 g", kcal:240,p:16,c:40,f:3}
 };
 
+function localDateKey(d=new Date()){
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,"0");
+  const day=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+
 let macros = JSON.parse(localStorage.getItem("macrosV1")||"null") || defaults;
+let history = JSON.parse(localStorage.getItem("historyV1")||"{}");
 let state = JSON.parse(localStorage.getItem("stateV1")||"null") || {
   selections:{desayuno:"A",media:"A",comida:"A",merienda:"A",cena:"A"},
-  checked:{}, water:0, creatine:false, goal:"A"
+  checked:{}, water:0, creatine:false, goal:"A", currentDate:localDateKey()
 };
+if(!state.currentDate) state.currentDate=localDateKey();
 
 const meals = [
   {
@@ -233,60 +263,8 @@ const meals = [
 
 function key(meal,opt,idx){return `${meal}_${opt}_${idx}`}
 
-function renderMeals(){
-  const root=document.getElementById("meals"); root.innerHTML="";
-  meals.forEach(meal=>{
-    const opt=state.selections[meal.id]||"A";
-    const card=document.createElement("section"); card.className="card";
-    card.innerHTML=`<h2>${meal.title}</h2>
-      <div class="tabs">
-        <button class="tab ${opt==="A"?"active":""}" data-meal="${meal.id}" data-opt="A">Opción A</button>
-        <button class="tab ${opt==="B"?"active":""}" data-meal="${meal.id}" data-opt="B">Opción B</button>
-      </div>
-      <div class="items"></div><div class="mealstatus"></div>`;
-    const list=card.querySelector(".items");
-    meal[opt].forEach((entry,idx)=>{
-      const k=key(meal.id,opt,idx);
-      const row=document.createElement("div"); row.className="item"+(state.checked[k]?" done":"");
-      const cb=document.createElement("input"); cb.type="checkbox"; cb.checked=!!state.checked[k];
-      cb.onchange=()=>{state.checked[k]=cb.checked; save(); renderMeals(); updateSummary();}
-      const label=document.createElement("label");
-      const macro=document.createElement("span"); macro.className="macro";
-
-      if(entry.id){
-        label.textContent=macros[entry.id].name;
-        macro.textContent=`${macros[entry.id].kcal} kcal`;
-        row.dataset.macroId=entry.id;
-      } else {
-        const sel=document.createElement("select");
-        entry.choice.forEach(id=>{
-          const o=document.createElement("option"); o.value=id; o.textContent=macros[id].name; sel.appendChild(o);
-        });
-        const saved=state.checked[k+"_choice"] || entry.choice[0];
-        sel.value=saved;
-        sel.onchange=()=>{state.checked[k+"_choice"]=sel.value; save(); renderMeals(); updateSummary();}
-        label.innerHTML="";
-        label.appendChild(sel);
-        macro.textContent=`${macros[saved].kcal} kcal`;
-        row.dataset.macroId=saved;
-      }
-      row.append(cb,label,macro); list.appendChild(row);
-    });
-
-    const status=card.querySelector(".mealstatus");
-    const ks=meal[opt].map((_,i)=>key(meal.id,opt,i));
-    const done=ks.filter(k=>state.checked[k]).length;
-    status.textContent=done===ks.length ? "✓ Comida completa" : `${done}/${ks.length} elementos marcados`;
-    if(done===ks.length) status.classList.add("ok");
-    root.appendChild(card);
-  });
-
-  document.querySelectorAll(".tab").forEach(btn=>{
-    btn.onclick=()=>{
-      const m=btn.dataset.meal, o=btn.dataset.opt;
-      state.selections[m]=o; save(); renderMeals(); updateSummary();
-    }
-  });
+function dayGoal(){
+  return goals[state.goal] || goals.A;
 }
 
 function consumed(){
@@ -296,62 +274,351 @@ function consumed(){
     meal[opt].forEach((entry,idx)=>{
       const k=key(meal.id,opt,idx);
       if(!state.checked[k]) return;
-      let id=entry.id || state.checked[k+"_choice"] || entry.choice[0];
+      const id=entry.id || state.checked[k+"_choice"] || entry.choice[0];
       const m=macros[id];
       ["kcal","p","c","f"].forEach(x=>t[x]+=Number(m[x]||0));
     });
   });
   return t;
 }
-function updateSummary(){
-  let g=goals[state.goal] || goals.A;
+
+function saveSnapshot(dateKey){
+  if(!dateKey) return;
+  const g=dayGoal();
   const t=consumed();
-  const defs=[["kcal","kcalText","kcalBar","kcalLeft"," kcal"],["p","pText","pBar","pLeft"," g"],["c","cText","cBar","cLeft"," g"],["f","fText","fBar","fLeft"," g"]];
+  history[dateKey]={
+    date:dateKey,
+    goalKey:state.goal||"A",
+    goal:{kcal:g.kcal,p:g.p,c:g.c,f:g.f},
+    consumed:{kcal:t.kcal,p:t.p,c:t.c,f:t.f},
+    difference:{
+      kcal:g.kcal-t.kcal,
+      p:g.p-t.p,
+      c:g.c-t.c,
+      f:g.f-t.f
+    },
+    water:Number(state.water||0),
+    creatine:!!state.creatine
+  };
+  localStorage.setItem("historyV1",JSON.stringify(history));
+}
+
+function ensureCurrentDay(){
+  const today=localDateKey();
+  if(!state.currentDate){
+    state.currentDate=today;
+    return;
+  }
+  if(state.currentDate!==today){
+    // Guardamos el cierre del último día usado antes de empezar uno nuevo.
+    saveSnapshot(state.currentDate);
+    state.currentDate=today;
+    state.checked={};
+    state.water=0;
+    state.creatine=false;
+    localStorage.setItem("stateV1",JSON.stringify(state));
+  }
+}
+
+function save(){
+  localStorage.setItem("stateV1",JSON.stringify(state));
+  localStorage.setItem("macrosV1",JSON.stringify(macros));
+  saveSnapshot(state.currentDate||localDateKey());
+  renderHistory();
+}
+
+function renderMeals(){
+  const root=document.getElementById("meals");
+  root.innerHTML="";
+  meals.forEach(meal=>{
+    const opt=state.selections[meal.id]||"A";
+    const card=document.createElement("section");
+    card.className="card";
+    card.innerHTML=`<h2>${meal.title}</h2>
+      <div class="tabs">
+        <button class="tab ${opt==="A"?"active":""}" data-meal="${meal.id}" data-opt="A">Opción A</button>
+        <button class="tab ${opt==="B"?"active":""}" data-meal="${meal.id}" data-opt="B">Opción B</button>
+      </div>
+      <div class="items"></div><div class="mealstatus"></div>`;
+
+    const list=card.querySelector(".items");
+
+    meal[opt].forEach((entry,idx)=>{
+      const k=key(meal.id,opt,idx);
+      const row=document.createElement("div");
+      row.className="item"+(state.checked[k]?" done":"");
+
+      const cb=document.createElement("input");
+      cb.type="checkbox";
+      cb.checked=!!state.checked[k];
+      cb.onchange=()=>{
+        ensureCurrentDay();
+        state.checked[k]=cb.checked;
+        save();
+        renderMeals();
+        updateSummary();
+      };
+
+      const label=document.createElement("label");
+      const macro=document.createElement("span");
+      macro.className="macro";
+
+      if(entry.id){
+        label.textContent=macros[entry.id].name;
+        macro.textContent=`${macros[entry.id].kcal} kcal`;
+        row.dataset.macroId=entry.id;
+      } else {
+        const sel=document.createElement("select");
+        entry.choice.forEach(id=>{
+          const o=document.createElement("option");
+          o.value=id;
+          o.textContent=macros[id].name;
+          sel.appendChild(o);
+        });
+        const saved=state.checked[k+"_choice"] || entry.choice[0];
+        sel.value=saved;
+        sel.onchange=()=>{
+          ensureCurrentDay();
+          state.checked[k+"_choice"]=sel.value;
+          save();
+          renderMeals();
+          updateSummary();
+        };
+        label.appendChild(sel);
+        macro.textContent=`${macros[saved].kcal} kcal`;
+        row.dataset.macroId=saved;
+      }
+
+      row.append(cb,label,macro);
+      list.appendChild(row);
+    });
+
+    const status=card.querySelector(".mealstatus");
+    const ks=meal[opt].map((_,i)=>key(meal.id,opt,i));
+    const done=ks.filter(k=>state.checked[k]).length;
+    status.textContent=done===ks.length ? "✓ Comida completa" : `${done}/${ks.length} elementos marcados`;
+    if(done===ks.length) status.classList.add("ok");
+
+    root.appendChild(card);
+  });
+
+  document.querySelectorAll(".tab").forEach(btn=>{
+    btn.onclick=()=>{
+      ensureCurrentDay();
+      const m=btn.dataset.meal;
+      const o=btn.dataset.opt;
+      state.selections[m]=o;
+      save();
+      renderMeals();
+      updateSummary();
+    };
+  });
+}
+
+function updateSummary(){
+  const g=dayGoal();
+  const t=consumed();
+  const defs=[
+    ["kcal","kcalText","kcalBar","kcalLeft"," kcal"],
+    ["p","pText","pBar","pLeft"," g"],
+    ["c","cText","cBar","cLeft"," g"],
+    ["f","fText","fBar","fLeft"," g"]
+  ];
+
   defs.forEach(([x,txt,bar,left,unit])=>{
     document.getElementById(txt).textContent=`${Math.round(t[x])} / ${g[x]}${unit}`;
-    const pending=Math.max(0,g[x]-t[x]);
-    document.getElementById(left).textContent=pending>0?`Pendiente: ${Math.round(pending)}${unit}`:`Objetivo alcanzado`;
+    const diff=g[x]-t[x];
+    document.getElementById(left).textContent=
+      diff>0 ? `Pendiente: ${Math.round(diff)}${unit}` :
+      diff<0 ? `Exceso: ${Math.round(Math.abs(diff))}${unit}` :
+      "Objetivo alcanzado";
     document.getElementById(bar).style.width=Math.min(100,t[x]/g[x]*100)+"%";
   });
+
   document.getElementById("waterText").textContent=(state.water/1000).toFixed(2).replace(".",",")+" L";
   document.getElementById("waterBar").style.width=Math.min(100,state.water/2000*100)+"%";
   document.getElementById("creatine").checked=!!state.creatine;
 }
-function save(){localStorage.setItem("stateV1",JSON.stringify(state)); localStorage.setItem("macrosV1",JSON.stringify(macros));}
+
+function diffLabel(value, unit){
+  const rounded=Math.round(Math.abs(value));
+  if(Math.abs(value)<0.5) return {text:"Objetivo exacto",cls:"exact"};
+  if(value>0) return {text:`Faltan ${rounded}${unit}`,cls:"pending"};
+  return {text:`Exceso ${rounded}${unit}`,cls:"excess"};
+}
+
+function formatHistoryDate(dateKey){
+  const [y,m,d]=dateKey.split("-").map(Number);
+  const date=new Date(y,m-1,d);
+  return new Intl.DateTimeFormat("es-ES",{
+    weekday:"short",day:"numeric",month:"short",year:"numeric"
+  }).format(date);
+}
+
+function renderHistory(){
+  const root=document.getElementById("history");
+  root.innerHTML="";
+  const dates=Object.keys(history).sort().reverse();
+
+  if(!dates.length){
+    root.innerHTML='<p class="note">Todavía no hay días guardados.</p>';
+    return;
+  }
+
+  dates.forEach(dateKey=>{
+    const h=history[dateKey];
+    const row=document.createElement("div");
+    row.className="historyrow";
+
+    const top=document.createElement("div");
+    top.className="historytop";
+    top.innerHTML=
+      `<b>${formatHistoryDate(dateKey)}</b>`+
+      (dateKey===localDateKey()?'<span class="todaytag">Hoy</span>':"");
+    row.appendChild(top);
+
+    const grid=document.createElement("div");
+    grid.className="historygrid";
+
+    [
+      ["Calorías","kcal"," kcal"],
+      ["Proteína","p"," g"],
+      ["Hidratos","c"," g"],
+      ["Grasas","f"," g"]
+    ].forEach(([label,key,unit])=>{
+      const info=diffLabel(h.difference[key],unit);
+      const box=document.createElement("div");
+      box.className="historymetric "+info.cls;
+      box.innerHTML=`<strong>${label}</strong>${info.text}`;
+      grid.appendChild(box);
+    });
+
+    row.appendChild(grid);
+
+    const line=document.createElement("div");
+    line.className="historyconsumed";
+    line.textContent=
+      `Consumido: ${Math.round(h.consumed.kcal)} / ${h.goal.kcal} kcal · `+
+      `P ${Math.round(h.consumed.p)}/${h.goal.p} g · `+
+      `HC ${Math.round(h.consumed.c)}/${h.goal.c} g · `+
+      `G ${Math.round(h.consumed.f)}/${h.goal.f} g · `+
+      `Agua ${(Number(h.water||0)/1000).toFixed(2).replace(".",",")} L`;
+    row.appendChild(line);
+
+    root.appendChild(row);
+  });
+}
 
 function renderEditor(){
-  const el=document.getElementById("editor"); el.innerHTML="";
-  const head=document.createElement("div"); head.className="editgrid";
-  head.innerHTML="<b>Alimento</b><b>kcal</b><b>P</b><b>HC</b><b>G</b>"; el.appendChild(head);
+  const el=document.getElementById("editor");
+  el.innerHTML="";
+  const head=document.createElement("div");
+  head.className="editgrid";
+  head.innerHTML="<b>Alimento</b><b>kcal</b><b>P</b><b>HC</b><b>G</b>";
+  el.appendChild(head);
+
   Object.entries(macros).forEach(([id,m])=>{
-    const row=document.createElement("div"); row.className="editgrid";
-    const n=document.createElement("div"); n.textContent=m.name;
+    const row=document.createElement("div");
+    row.className="editgrid";
+
+    const n=document.createElement("div");
+    n.textContent=m.name;
     row.appendChild(n);
+
     ["kcal","p","c","f"].forEach(k=>{
-      const inp=document.createElement("input"); inp.type="number"; inp.step="0.1"; inp.value=m[k];
-      inp.onchange=()=>{macros[id][k]=Number(inp.value||0); save(); renderMeals(); updateSummary();}
+      const inp=document.createElement("input");
+      inp.type="number";
+      inp.step="0.1";
+      inp.value=m[k];
+      inp.onchange=()=>{
+        macros[id][k]=Number(inp.value||0);
+        save();
+        renderMeals();
+        updateSummary();
+      };
       row.appendChild(inp);
     });
+
     el.appendChild(row);
   });
 }
 
 document.getElementById("goalSelect").value=state.goal||"A";
 document.getElementById("goalSelect").onchange=e=>{
-  state.goal=e.target.value==="custom"?"A":e.target.value; save(); updateSummary();
+  ensureCurrentDay();
+  state.goal=e.target.value;
+  save();
+  updateSummary();
 };
-document.getElementById("waterPlus").onclick=()=>{state.water=Math.min(5000,state.water+250);save();updateSummary();}
-document.getElementById("waterMinus").onclick=()=>{state.water=Math.max(0,state.water-250);save();updateSummary();}
-document.getElementById("creatine").onchange=e=>{state.creatine=e.target.checked;save();}
+
+document.getElementById("waterPlus").onclick=()=>{
+  ensureCurrentDay();
+  state.water=Math.min(5000,state.water+250);
+  save();
+  updateSummary();
+};
+
+document.getElementById("waterMinus").onclick=()=>{
+  ensureCurrentDay();
+  state.water=Math.max(0,state.water-250);
+  save();
+  updateSummary();
+};
+
+document.getElementById("creatine").onchange=e=>{
+  ensureCurrentDay();
+  state.creatine=e.target.checked;
+  save();
+};
+
 document.getElementById("resetDay").onclick=()=>{
-  if(confirm("¿Desmarcar todo y empezar un nuevo día?")){
-    state.checked={};state.water=0;state.creatine=false;save();renderMeals();updateSummary();
+  ensureCurrentDay();
+  if(confirm("¿Quieres borrar lo marcado hoy y empezar de cero? El historial de hoy también se actualizará.")){
+    state.checked={};
+    state.water=0;
+    state.creatine=false;
+    save();
+    renderMeals();
+    updateSummary();
   }
 };
 
-renderMeals(); renderEditor(); updateSummary();
+ensureCurrentDay();
+renderMeals();
+renderEditor();
+updateSummary();
+saveSnapshot(state.currentDate);
+renderHistory();
 
-if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{});}
+// Si la app estaba abierta al cambiar de fecha, crea el nuevo día automáticamente.
+document.addEventListener("visibilitychange",()=>{
+  if(!document.hidden){
+    const before=state.currentDate;
+    ensureCurrentDay();
+    if(before!==state.currentDate){
+      renderMeals();
+      updateSummary();
+    }
+    saveSnapshot(state.currentDate);
+    renderHistory();
+  }
+});
+
+setInterval(()=>{
+  const before=state.currentDate;
+  ensureCurrentDay();
+  if(before!==state.currentDate){
+    renderMeals();
+    updateSummary();
+    saveSnapshot(state.currentDate);
+    renderHistory();
+  }
+},60000);
+
+// Registro correcto del service worker que ya existe en el repositorio.
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw-1.js").catch(()=>{});
+}
 </script>
 </body>
 </html>
